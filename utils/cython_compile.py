@@ -17,7 +17,7 @@ setup(
             Extension(
                 "box_intersection",
                 sources=["box_intersection.pyx"],
-                include_dirs=INCLUDE_PATH
+                include_dirs=[np.get_include()]  #INCLUDE_PATH
             )),
 )
 
