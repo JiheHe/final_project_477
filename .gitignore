@@ -11,3 +11,7 @@ utils/build/*
 outputs/
 
 CLIP/pretrain_models/*
+*.tar
+
+# retrieved datafolder
+Data/

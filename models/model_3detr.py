@@ -322,11 +322,14 @@ class Model3DETRPredictedBoxDistillationHead(nn.Module):
                 print(self.superset_all_classes_keys)
                 print(len(self.superset_all_classes_keys))
             
-            self.clip_model, self.preprocess_for_tensor = clip.load("./CLIP/pretrain_models/ViT-B-16.pt", #"./CLIP/pretrain_models/RN50x64.pt",
-                                                                    # "./CLIP/pretrain_models/ViT-L-14.pt", #"./CLIP/pretrain_models/RN50x64.pt",
-                                                                    device=self.device,
-                                                                    download_root='./CLIP/pretrain_models/',
-                                                                    if_transform_tensor=True)
+            # self.clip_model, self.preprocess_for_tensor = clip.load("./CLIP/pretrain_models/ViT-B-16.pt", #"./CLIP/pretrain_models/RN50x64.pt",
+            #                                                         # "./CLIP/pretrain_models/ViT-L-14.pt", #"./CLIP/pretrain_models/RN50x64.pt",
+            #                                                         device=self.device,
+            #                                                         download_root='./CLIP/pretrain_models/',
+            #                                                         if_transform_tensor=True)
+            # Assuming the paper used original clip without any changes; so can load without any local .pt file!
+            self.clip_model, self.preprocess_for_tensor = clip.load("ViT-B/16", device=self.device, if_transform_tensor=True)
+
             for name, param in self.clip_model.named_parameters():
                 param.requires_grad = False
 
@@ -370,10 +373,12 @@ class Model3DETRPredictedBoxDistillationHead(nn.Module):
             self.trans_mtx[1, 1] *= scale_h
 
             # ############################ train use
-            self.test_clip_model, self.test_preprocess_for_tensor = clip.load("./CLIP/pretrain_models/ViT-B-16.pt", #"./CLIP/pretrain_models/RN50x64.pt", #"./CLIP/pretrain_models/ViT-L-14.pt",
-                                                                              device=self.device,
-                                                                              download_root='./CLIP/pretrain_models/',
-                                                                              if_transform_tensor=True)
+            # self.test_clip_model, self.test_preprocess_for_tensor = clip.load("./CLIP/pretrain_models/ViT-B-16.pt", #"./CLIP/pretrain_models/RN50x64.pt", #"./CLIP/pretrain_models/ViT-L-14.pt",
+            #                                                                   device=self.device,
+            #                                                                   download_root='./CLIP/pretrain_models/',
+            #                                                                   if_transform_tensor=True)
+            # Assuming the paper used original clip without any changes; so can load without any local .pt file!
+            self.test_clip_model, self.test_preprocess_for_tensor = clip.load("ViT-B/16", device=self.device, if_transform_tensor=True)
 
             self.test_logit_scale = self.test_clip_model.logit_scale.exp()
 
@@ -2073,10 +2078,13 @@ class Model3DETRMultiClassHead(nn.Module):
 
 
         # # #########################ResNet#########################
-        self.clip_model, self.preprocess_for_tensor = clip.load("./CLIP/pretrain_models/ViT-B-16.pt", #"./CLIP/pretrain_models/RN50x64.pt", #"./CLIP/pretrain_models/ViT-B-16.pt", #"./CLIP/pretrain_models/RN50x64.pt", #"./CLIP/pretrain_models/ViT-L-14.pt",
-                                                                device=self.device,
-                                                                download_root='./CLIP/pretrain_models/',
-                                                                if_transform_tensor=True)
+        # self.clip_model, self.preprocess_for_tensor = clip.load("./CLIP/pretrain_models/ViT-B-16.pt", #"./CLIP/pretrain_models/RN50x64.pt", #"./CLIP/pretrain_models/ViT-B-16.pt", #"./CLIP/pretrain_models/RN50x64.pt", #"./CLIP/pretrain_models/ViT-L-14.pt",
+        #                                                         device=self.device,
+        #                                                         download_root='./CLIP/pretrain_models/',
+        #                                                         if_transform_tensor=True)
+        # Assuming the paper used original clip without any changes; so can load without any local .pt file!
+        self.clip_model, self.preprocess_for_tensor = clip.load("ViT-B/16", device=self.device, if_transform_tensor=True)
+
         for name, param in self.clip_model.named_parameters():
             param.requires_grad = False
         self.logit_scale = self.clip_model.logit_scale.exp()
