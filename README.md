@@ -57,8 +57,8 @@ Our final one-shot in-context learning prompt looks like-
     + being in the scene, respectively?
     "
 
-Additional information on how we derived at one-shot in-context learning (also included in llm_judge.py):
-Check 'multiple v4' at the bottom of the log to see our final derived output closely aligning with our desired behavior!
+Additional information on how we derived at one-shot in-context learning (also included in llm_judge.py):<br>
+_Check 'multiple v4' at the bottom of the log to see our final derived output closely aligning with our desired behavior!_
 
     # Tuning Logs #
 
