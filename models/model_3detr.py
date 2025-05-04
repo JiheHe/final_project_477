@@ -44,6 +44,8 @@ from typing import Tuple, Union
 # import torch.nn.functional as F
 from torch.distributions import Categorical
 
+from models.llm_judge import construct_prompt, call_llm_api_multiple, extract_numeric_scores_multiple
+
 # ALL_CLASS_PATH = "datasets/all_classes_trainval_v2_del_nonval_classes.npy"
 ALL_CLASS_PATH_V1 = "datasets/all_classes_trainval_v1.npy"
 ALL_CLASS_PATH_V2 = "datasets/all_classes_trainval_v2_revised_del_val_less_than_5_classes.npy"
@@ -1626,9 +1628,63 @@ class Model3DETRPredictedBoxDistillationHead(nn.Module):
             correlation_map = torch.bmm(gt_image_embedding,
                                         text_features_clip.permute(0, 2, 1)) * temperature_param
             box_scores = torch.nn.functional.softmax(correlation_map, dim=-1)
-            max_score, max_id = torch.max(box_scores, dim=-1)
-            weak_confidence_weight = max_score
-            weak_box_cate_label = max_id
+
+
+            # concept #2: llm judge
+            print("LLM judge is being used! Slower run time!!!!!!!!!!!!!!!!!!!")
+            # pick top 3 object candidates.
+            topk_scores, topk_ids = torch.topk(box_scores, k=3, dim=-1)
+            # convert indices to category labels
+            candidate_labels_batch = []
+            for batch_idx in range(topk_ids.shape[0]):
+                batch_labels = []
+                for query_idx in range(topk_ids.shape[1]):
+                    candidate_labels = [self.open_categories[label_id] for label_id in topk_ids[batch_idx, query_idx]]
+                    batch_labels.append(candidate_labels)
+                candidate_labels_batch.append(batch_labels)
+
+            scene_labels_batch = inputs["scene_labels"]  # ["kitchen", "office", ...]
+
+            # query LLM for each box/query candidate (batch-wise)
+            llm_adjusted_scores_batch = []
+            for scene_label, batch_labels in zip(scene_labels_batch, candidate_labels_batch):
+                llm_adjusted_scores_query = []
+
+                if scene_label.lower() == "idk":
+                    # if scene is unknown, use uniform probabilities, aka original scores
+                    llm_adjusted_scores_query.extend([[1.0 / len(candidate_labels)] * len(candidate_labels)
+                                                    for candidate_labels in batch_labels])
+
+                else:  # we have scene label!
+                    for candidate_labels in batch_labels:
+                        # construct a single prompt containing all candidates
+                        prompt = construct_prompt(scene_label, candidate_labels)
+                        # single LLM call per candidate set
+                        llm_response = call_llm_api_multiple(prompt)
+                        # extract numeric scores (integers from 1-99)
+                        llm_scores = extract_numeric_scores_multiple(llm_response, num_candidates=len(candidate_labels))
+                        # convert extracted scores into probability distribution via softmax
+                        llm_scores_tensor = torch.tensor(llm_scores, dtype=torch.float32)
+                        llm_probs = torch.softmax(llm_scores_tensor, dim=-1).tolist()
+
+                        llm_adjusted_scores_query.append(llm_probs)
+                llm_adjusted_scores_batch.append(llm_adjusted_scores_query)
+
+            llm_adjusted_scores_batch = torch.tensor(llm_adjusted_scores_batch).to(self.device)  # dim: batch_size, num_queries, k]
+
+            # pick best candidate after LLM reranking explicitly
+            best_llm_scores, best_llm_idx = torch.max(llm_adjusted_scores_batch, dim=-1)
+
+            # Use best LLM chosen labels explicitly as weak labels
+            weak_box_cate_label = torch.gather(topk_ids, dim=-1, index=best_llm_idx.unsqueeze(-1)).squeeze(-1)
+            weak_confidence_weight = best_llm_scores
+
+            
+            # originally using argmax. Outdated.
+            # max_score, max_id = torch.max(box_scores, dim=-1)
+            # weak_confidence_weight = max_score
+            # weak_box_cate_label = max_id
+
             weak_confidence_weight[
                 gt_image_embedding_mask[:, :,
                 0] < 1] = 0.0  # confience_weight for bg object is set to 0, because it is no
@@ -1801,6 +1857,35 @@ class Model3DETRPredictedBoxDistillationHead(nn.Module):
         box_predictions["outputs"]["logit_scale"] = torch.clip(self.logit_scale.exp(), min=None, max=100)
 
 
+        # retrieve and tokenize text scene labels
+        scene_labels = inputs["scene_labels"]  # a list of scene labels, like "kitchen", "office", ....
+        tokenized_scene_labels = clip.tokenize(scene_labels).to(self.device)
+        with torch.no_grad():  # CLIP will be frozen.
+            # embed scene labels into text emebddings
+            scene_label_embeddings = self.clip_model.encode_text(tokenized_scene_labels).to(torch.float32)
+            # normalize each one to a unit vector
+            scene_label_embeddings_norm = scene_label_embeddings / scene_label_embeddings.norm(dim=-1, keepdim=True)
+
+        # mask out unknown scene labels
+        known_label_mask = torch.tensor(
+            [label.lower() != "idk" for label in scene_labels],
+            dtype=torch.float32, device=self.device
+        ).unsqueeze(-1)  # [batch_size, 1]
+
+        # store in output for downstream usage
+        # box_predictions["outputs"]["scene_label_embeddings"] = scene_label_embeddings_norm  # dim (batch size, embed_dim)
+
+        # dot product (cosine similarity) scene label embedding against open category emebddings to compute similarity scores (likelihood) of each category in scene
+        # under the same clip model; they are in the same space. So normalized dot product can represent similarity.
+        similarity_scores = (scene_label_embeddings_norm @ self.text_features_fg_norm.T)  # dim (batch_size x num_open_categories)
+        # turn the scores into probabaility weights (softmax with temperature)
+        temperature_param = 0.07  # ideal for CLIP-like embeddings
+        similarity_weights = torch.softmax(similarity_scores / temperature_param, dim=-1)
+
+        # apply mask: known_label_mask=0 means the scene_label is "idk" so weights should become uniform (no modification)
+        uniform_weights = torch.ones_like(similarity_weights) / similarity_weights.size(-1)
+        similarity_weights = similarity_weights * known_label_mask + uniform_weights * (1 - known_label_mask)
+
         if (not if_real_test) and (not if_cmp_class) and (not if_test): # do not calculate when testing
             if self.if_clip_superset: # if adopt lvis superset
                 box_predictions["outputs"]["text_features_clip"] = self.superset_text_features_fg_norm.unsqueeze(
@@ -1834,6 +1919,10 @@ class Model3DETRPredictedBoxDistillationHead(nn.Module):
                     # box_predictions, scores2, prob2 = self.get_class_scores_sigmoid(box_predictions)
                     box_predictions, scores2, prob2 = self.get_class_scores(box_predictions)
 
+        # apply the reweighing of class object likelihood using the similarity scores
+        if "sem_cls_prob" in box_predictions["outputs"]:  # i.e. scores
+            # should have (batch_size, num_queries, num_open_categories)
+            box_predictions["outputs"]["sem_cls_prob"] *= similarity_weights.unsqueeze(1).expand_as(box_predictions["outputs"]["sem_cls_prob"])  # broadcasting across queries
 
         return box_predictions
 

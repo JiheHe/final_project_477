@@ -321,6 +321,9 @@ class SunrgbdImageDetectionDataset(Dataset):
         if root_dir is None:
             root_dir = DATA_PATH_V1 if use_v1 else DATA_PATH_V2
 
+        root_splits = root_dir.split('/')
+        self.scene_label_dir = os.path.join(root_splits[0], root_splits[1], 'scene_labels')  # IMPORTANT: assuming the path leads to /Data/sunrgb_d/
+
         self.data_path = root_dir + "_%s" % (split_set)
         # print(self.data_path)
         self.calib_path = CALIB_PATH
@@ -422,6 +425,15 @@ class SunrgbdImageDetectionDataset(Dataset):
             scan_path = scan_name
         else:
             scan_path = os.path.join(self.data_path, scan_name)
+
+        # read scene label from txt file
+        scene_label_file = os.path.join(self.scene_label_dir, f"{scan_name}.txt")
+        try:
+            with open(scene_label_file, 'r') as f:
+                scene_label = f.read().strip()
+        except FileNotFoundError:
+            scene_label = "idk"  # special tag that indicates unknown scene label, consistent with what the authors used
+        
         # print(self.data_path)
         #print(self.image_name)
         if self.if_input_image:
@@ -830,4 +842,6 @@ class SunrgbdImageDetectionDataset(Dataset):
             image_flip_array = np.ones(1)
             ret_dict["image_flip_array"] = image_flip_array
             ret_dict["flip_length"] = self.image_size[0]
+        
+        ret_dict["scene_labels"] = scene_label
         return ret_dict
