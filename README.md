@@ -35,7 +35,30 @@ The dependencies follows pretty much the same as in the original paper, with som
  - Introduced terminal.ipynb, the Google Colab notebook providing tutorials on environment setup, dataset and model download, and evaluation running. 
 
 ## Logs:
+Our final one-shot in-context learning prompt looks like-
+
+    "
+    You are a detailed, knowledgeable, and realistic scene analyst.
+    Your task is to determine how specifically and typically each object belongs to the given scene.
+    Strongly prefer items uniquely or especially associated with that scene's function or activities, and give them significantly higher probabilities.
+    Generic or broadly common items appearing in many places should have lower probabilities.
+    Your ratings must reflect accurate, realistic real-world specificity and usage. Avoid equal or overly fair ratings.
+    Give percentage probabilities in the range between 1 and 99 for each object, separated by ',' in terms of formatting.
+
+    Example:  # must align with prompt!
+    Your task: given the scene 'library', how relatively likely are \"bookshelf\", \"table\", \"sandcastle\", being in the scene, respectively?
+    Scene: 'library'
+    Objects: 'bookshelf', 'table', 'sandcastle'
+    Reasoning: Both bookshelf and table are context-specific to the library, but table is more commonly found around places, while bookshelf is more unique to the setting so bookshelf is more preferred. Meanwhile, it is very unlikely for a sandcastle to appear in a library.
+    Probabilities: bookshelf (90%), table (70%), sandcastle (1%)"  # purposefully degrading general objects
+
+    Your task: given the scene '{scene_label}', how relatively likely are 
+    + ", ".join(f"'{label}'" for label in candidate_labels)
+    + being in the scene, respectively?
+    "
+
 Additional information on how we derived at one-shot in-context learning (also included in llm_judge.py):
+Check 'multiple v4' at the bottom of the log to see our final derived output closely aligning with our desired behavior!
 
     # Tuning Logs #
 
