@@ -1631,7 +1631,6 @@ class Model3DETRPredictedBoxDistillationHead(nn.Module):
 
 
             # concept #2: llm judge
-            print("LLM judge is being used! Slower run time!!!!!!!!!!!!!!!!!!!")
             # pick top 3 object candidates.
             topk_scores, topk_ids = torch.topk(box_scores, k=3, dim=-1)
             # convert indices to category labels
